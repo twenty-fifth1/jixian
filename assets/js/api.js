@@ -7,7 +7,7 @@
 	const USE_CREDENTIALS = true;
 
 	// 固定 Authorization 令牌（按需修改）
-	const FIXED_AUTHORIZATION = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJ1c2VyIjoxOTg3ODMyNTc0ODU4ODMzOTIxLCJleHAiOjE3NjI5MzI5MjV9.mz9ftOV2odBr5vH4HwlUZehyiELwvHra-1MsMmGZYf3ChU1ecqgsOYUKAsui6zl5d2IRnKm1doc9rKbMfrV5onHS8I0iPMJvzYqWOS2FXDauytTYZyoXjkQugsAp07MnBh9ZawV4eceMi_ltbhHVlT437Or5cqi_WFMjC3W28lhQTNWtek8WpmMxPMMrJjnkCgTSFQsTFWikW3GKBWxYemhDDS4CqbkqBed9OXcGeFtUwijETZJjSKqqgLrnraHPaXVX1m1iQGKMma9gV8bLwN1iqExyWiNh-fxjyYy5bzbuV8uNVD2TIqD9o90ThGX82xyePMKNPx3oTzwrBJXxFg';
+	const FIXED_AUTHORIZATION = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJ1c2VyIjoxOTg3ODMyNTc0ODU4ODMzOTIxLCJleHAiOjE3NjI5MzUzODZ9.KsDXdry5Rsle2CgUfrVfSZmw64kuTEYH3HvL9gXK15N4lixQyhYJ9zXJOfTc_XsfA-R0Z_hxVUC0TEGomB2Llq1cs1ZvV5OXQlRYV0DUeJmaleaUhB-ZT8LWV5ehMknUZ9FtGXbj9PBYkGjvcs4U29xVqWBSQQUPjiX-cV30cqriQ6EBK8Dhz9Ko_MJijfMcbOZd0yrljSqwiV1LOU-tGkkCUoNPabyO2wosBYtsoW2U3eu_oTt3vAjqFWvAweKxh5r5RaN-gern0X9f9ewxTyMXLkuL-ST6APJK5WnB6bXmkatDT5iXsGFSQRYNnYsSBzkwYy7roXp0fY6QNh9pDA';
 
 	// 统一持久化 token（localStorage + cookie）
 	function persistToken(token){
@@ -23,8 +23,10 @@
 		// 动态从本地读取 token（推荐）
 		try{
 			const t = localStorage.getItem('API_TOKEN');
-			if (t) return { Authorization: t.startsWith('Bearer ') ? t : `Bearer ${t}` };
+			if (t) return { authorization: t.startsWith('Bearer ') ? t : `Bearer ${t}` };
 		}catch(e){}
+		// 若本地没有，则回退使用固定令牌
+		if (FIXED_AUTHORIZATION) return { authorization: `Bearer ${FIXED_AUTHORIZATION}` };
 		return {};
 	}
 
@@ -38,8 +40,8 @@
 				...headers
 			},
 			body: data ? JSON.stringify(data) : undefined,
-			credentials: USE_CREDENTIALS ? 'include' : 'omit',
-			mode: 'cors'
+			// credentials: USE_CREDENTIALS ? 'include' : 'omit',
+			// mode: 'cors'
 		};
 		let res;
 		try{
@@ -78,6 +80,64 @@
 		return payload;
 	}
 
+	// 与 @front-end 对齐的日期与数字工具（用于部分基于 path 的时间区间接口）
+	function num2Str(n){
+		return n < 10 ? `0${n}` : `${n}`;
+	}
+	/**
+	 * @param {Date} date
+	 * @returns {string} yyyy-MM-dd_HH:mm:ss
+	 */
+	function dateToPathVariable(date){
+		const fullYear = date.getFullYear();
+		const month = num2Str(date.getMonth() + 1); // month 从0开始
+		const day = num2Str(date.getDate());
+		const hours = num2Str(date.getHours());
+		const minutes = num2Str(date.getMinutes());
+		const seconds = num2Str(date.getSeconds());
+		return `${fullYear}-${month}-${day}_${hours}:${minutes}:${seconds}`;
+	}
+	// 参数归一/校验
+	function clampInt(value, min, def){
+		let n = parseInt(value, 10);
+		if (isNaN(n) || n < min) n = def;
+		return n;
+	}
+	function toDateOr(value, fallback){
+		if (value instanceof Date) return value;
+		if (value === undefined || value === null || value === '') return fallback;
+		const d = new Date(value);
+		return isNaN(d.getTime()) ? fallback : d;
+	}
+	/**
+	 * 通用 REST 风格路径构造：basePath/[first]/[from]/[to]/[read]/[limit]/[page]
+	 * - 自动处理默认值与校验：limit>=1，page>=1；from/to 兜底为时间范围
+	 * - 可根据需要省略某些段（未提供则不拼接）
+	 */
+	function buildQueryPath(basePath, first, { timeFrom, timeTo, limit=20, page=1, read } = {}){
+		const parts = [];
+		if (first !== undefined && first !== null && `${first}` !== '') parts.push(encodeURIComponent(String(first)));
+		// 只有在显式传入 timeFrom/timeTo 参数键时才拼接日期，未传则跳过对应段落
+		if ('timeFrom' in (arguments[2] || {})){
+			const from = toDateOr(timeFrom, new Date(0));
+			parts.push(dateToPathVariable(from));
+		}
+		if ('timeTo' in (arguments[2] || {})){
+			const to = toDateOr(timeTo, new Date());
+			parts.push(dateToPathVariable(to));
+		}
+		if ('read' in (arguments[2] || {})){
+			parts.push(String(!!read));
+		}
+		if ('limit' in (arguments[2] || {})){
+			parts.push(String(clampInt(limit, 1, 20)));
+		}
+		if ('page' in (arguments[2] || {})){
+			parts.push(String(clampInt(page, 1, 1)));
+		}
+		return parts.length ? `${basePath}/${parts.join('/')}` : basePath;
+	}
+
 	const Api = {
 		auth: {
 			login: (loginForm)=> request(`${BASE}/user/login`, { method:'POST', data: loginForm }),
@@ -94,14 +154,9 @@
 				const payload = typeof message === 'string' ? { message } : (message||{});
 				return request(`${BASE}${path}`, { method:'POST', data: payload });
 			},
-			historyMe: ({ limit, page, timeFrom, timeTo }={})=>{
-				const q = [];
-				if (limit!=null) q.push(`limit=${limit}`);
-				if (page!=null) q.push(`page=${page}`);
-				if (timeFrom) q.push(`time-from=${encodeURIComponent(timeFrom)}`);
-				if (timeTo) q.push(`time-to=${encodeURIComponent(timeTo)}`);
-				const qs = q.length? `?${q.join('&')}`:'';
-				return request(`${BASE}/robot/history/me${qs}`);
+			historyMe: ({ limit=20, page=1, timeFrom, timeTo }={})=>{
+				const url = buildQueryPath(`${BASE}/robot/history/me`, null, { timeFrom, timeTo, limit, page });
+				return request(url);
 			},
 			pieces: ({ chatId, limit })=>{
 				// 文档为 DELETE /robot/pieces/{chat-id}[/{limit}]
@@ -110,11 +165,15 @@
 			}
 		},
 		points: {
-			// 文档为 path 传参，这里优先 query 以兼容实现
-			gifts: (page=1, limit=12)=> request(`${BASE}/gift/all?limit=${limit}&page=${page}`),
+			// 与 @front-end 对齐为 path 传参
+			gifts: (page=1, limit=12)=> request(`${BASE}/gift/all/${limit}/${page}`),
 			giftsInRange: ({ lower=0, upper=null, page=1, limit=12 })=>{
-				const up = upper==null ? '' : `&upper=${upper}`;
-				return request(`${BASE}/gift/cost-in-range?lower=${lower}${up}&limit=${limit}&page=${page}`);
+				// 若后端实现为 path 变量，可改为 /gift/cost-in-range/{lower}/{upper}/{limit}/{page}
+				// 这里尽量与后端保持兼容，若 upper 缺省则不传
+				if (upper==null){
+					return request(`${BASE}/gift/cost-in-range/${lower}/${limit}/${page}`);
+				}
+				return request(`${BASE}/gift/cost-in-range/${lower}/${upper}/${limit}/${page}`);
 			},
 			consume: (id)=> request(`${BASE}/gift/consume/`, { method:'PUT', data:{ id } }),
 			detail: (id)=> request(`${BASE}/gift/detail/${id}`)
@@ -127,51 +186,38 @@
 			update: (dto)=> request(`${BASE}/consultation-content/update`, { method:'PUT', data: dto })
 		},
 		admin: {
-			users: (page=1, limit=10)=> request(`${BASE}/admin/user/all?limit=${limit}&page=${page}`),
+			users: (page=1, limit=10)=> request(`${BASE}/admin/user/all/${clampInt(limit,1,10)}/${clampInt(page,1,1)}`),
 			userOne: (id)=> request(`${BASE}/admin/user/one/${id}`),
 			userUpdate: (info)=> request(`${BASE}/admin/user/update`, { method:'PUT', data: info }),
-			consultAll: (page=1, limit=10)=> request(`${BASE}/admin/consultation/all?limit=${limit}&page=${page}`),
-			consultCombineAll: (page=1, limit=10)=> request(`${BASE}/admin/consultation/combine/all?limit=${limit}&page=${page}`),
+			consultAll: (page=1, limit=10)=> request(`${BASE}/admin/consultation/all/${clampInt(limit,1,10)}/${clampInt(page,1,1)}`),
+			consultCombineAll: (page=1, limit=10)=> request(`${BASE}/admin/consultation/combine/all/${clampInt(limit,1,10)}/${clampInt(page,1,1)}`),
 			consultCombineById: (id)=> request(`${BASE}/admin/consultation/combine/${id}`),
 			consultByUserId: (userId)=> request(`${BASE}/admin/consultation/user/${userId}`),
 			hotWords: (limit=10)=> request(`${BASE}/admin/consultation/hot-word/${limit}`),
-			feedbackNotRead: ({ limit, page, timeFrom, timeTo }={})=>{
-				const q=[]; if(limit!=null) q.push(`limit=${limit}`); if(page!=null) q.push(`page=${page}`);
-				if(timeFrom) q.push(`time-from=${encodeURIComponent(timeFrom)}`); if(timeTo) q.push(`time-to=${encodeURIComponent(timeTo)}`);
-				const qs = q.length? `?${q.join('&')}`:'';
-				return request(`${BASE}/admin/feedback/not-read${qs}`);
+			feedbackNotRead: ({ limit=20, page=1, timeFrom, timeTo }={})=>{
+				const url = buildQueryPath(`${BASE}/admin/feedback/not-read`, null, { timeFrom, timeTo, limit, page });
+				return request(url);
 			},
-			feedbackReadList: ({ limit, page, timeFrom, timeTo }={})=>{
-				const q=[]; if(limit!=null) q.push(`limit=${limit}`); if(page!=null) q.push(`page=${page}`);
-				if(timeFrom) q.push(`time-from=${encodeURIComponent(timeFrom)}`); if(timeTo) q.push(`time-to=${encodeURIComponent(timeTo)}`);
-				const qs = q.length? `?${q.join('&')}`:'';
-				return request(`${BASE}/admin/feedback/read${qs}`);
+			feedbackReadList: ({ limit=20, page=1, timeFrom, timeTo }={})=>{
+				const url = buildQueryPath(`${BASE}/admin/feedback/read`, null, { timeFrom, timeTo, limit, page });
+				return request(url);
 			},
 			feedbackMarkRead: (id)=> request(`${BASE}/admin/feedback/read`, { method:'PUT', data: id }),
-			feedbackByUser: ({ userId, read=null, limit, page })=>{
-				const base = read===null || read===undefined
-					? `${BASE}/admin/feedback/user/${userId}`
-					: `${BASE}/admin/feedback/user/${userId}/${read}`;
-				const q=[]; if(limit!=null) q.push(`limit=${limit}`); if(page!=null) q.push(`page=${page}`);
-				const qs = q.length? `?${q.join('&')}`:'';
-				return request(`${base}${qs}`);
+			feedbackByUser: ({ userId, read=false, limit=20, page=1 })=>{
+				const url = buildQueryPath(`${BASE}/admin/feedback/user`, userId, { read, limit, page });
+				return request(url);
 			},
-			robotHistoryUser: ({ userId, timeFrom, timeTo, limit, page })=>{
-				const q=[]; if(limit!=null) q.push(`limit=${limit}`); if(page!=null) q.push(`page=${page}`);
-				if(timeFrom) q.push(`time-from=${encodeURIComponent(timeFrom)}`); if(timeTo) q.push(`time-to=${encodeURIComponent(timeTo)}`);
-				const qs = q.length? `?${q.join('&')}`:'';
-				return request(`${BASE}/admin/robot/history/${userId}${qs}`);
+			robotHistoryUser: ({ userId, timeFrom, timeTo, limit=20, page=1 })=>{
+				const url = buildQueryPath(`${BASE}/admin/robot/history`, userId, { timeFrom, timeTo, limit, page });
+				return request(url);
 			},
-			actionCostLongerThan: ({ ms, limit, page })=>{
-				const q=[]; if(limit!=null) q.push(`limit=${limit}`); if(page!=null) q.push(`page=${page}`);
-				const qs = q.length? `?${q.join('&')}`:'';
-				return request(`${BASE}/admin/action/cost/${ms}${qs}`);
+			actionCostLongerThan: ({ ms, limit=20, page=1 })=>{
+				const url = buildQueryPath(`${BASE}/admin/action/cost`, ms, { limit, page });
+				return request(url);
 			},
-			actionRequestTimeLatest: ({ timeFrom, timeTo, limit, page }={})=>{
-				const q=[]; if(limit!=null) q.push(`limit=${limit}`); if(page!=null) q.push(`page=${page}`);
-				if(timeFrom) q.push(`time-from=${encodeURIComponent(timeFrom)}`); if(timeTo) q.push(`time-to=${encodeURIComponent(timeTo)}`);
-				const qs = q.length? `?${q.join('&')}`:'';
-				return request(`${BASE}/admin/action/request-time-latest${qs}`);
+			actionRequestTimeLatest: ({ timeFrom, timeTo, limit=20, page=1 }={})=>{
+				const url = buildQueryPath(`${BASE}/admin/action/request-time-latest`, null, { timeFrom, timeTo, limit, page });
+				return request(url);
 			},
 			giftInsert: (giftInfo)=> request(`${BASE}/admin/gift/insert`, { method:'POST', data: giftInfo }),
 			giftUpdate: (giftInfo)=> request(`${BASE}/admin/gift/update`, { method:'PUT', data: giftInfo }),
@@ -208,6 +254,13 @@
 	};
 
 	global.API = Api;
+
+	// 若本地尚无 token，初始化为固定令牌（可被登录/注册/更新时返回的新 token 覆盖）
+	try{
+		if (!localStorage.getItem('API_TOKEN') && FIXED_AUTHORIZATION){
+			persistToken(FIXED_AUTHORIZATION);
+		}
+	}catch(e){}
 })(window);
 
 

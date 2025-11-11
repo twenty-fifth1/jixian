@@ -6,6 +6,15 @@ window.PagePoints = {
 		const page = +(params.get('page')||1);
 		const limit = +(params.get('limit')||12);
 
+		// 渲染前获取 /user/me，确保积分为最新
+		try{
+			const me = await API.safe(API.auth.me);
+			if (me.ok && me.res?.data){
+				const d = me.res.data;
+				App.saveUser({ ...(App.state.user||{}), ...d });
+			}
+		}catch(e){}
+
 		// 生成足量本地模拟礼物（保证≥3页）
 		const TOTAL_MOCK = 48; // 4页 * 12
 		const buildMockCatalog = ()=> Array.from({length:TOTAL_MOCK}).map((_,idx)=>({
@@ -70,13 +79,13 @@ window.PagePoints = {
 					<div class="card h-100">
 						<div class="card-body">
 							<h2 class="h6">积分概览</h2>
-							<div class="display-6 fw-bold">${App.state.user?.points ?? 120}</div>
+							<div class="display-6 fw-bold">${App.state.user?.points ?? 0}</div>
 							<div class="text-secondary small mb-2">当前积分（登录后实时刷新）</div>
 							<div class="d-flex align-items-center gap-3">
-								<span class="badge text-bg-primary">Lv.${Math.max(1, Math.ceil(((App.state.user?.points ?? 120))/100))}</span>
+								<span class="badge text-bg-primary">Lv.${Math.max(1, Math.ceil(((App.state.user?.points ?? 0))/100))}</span>
 								<div class="flex-grow-1">
 									<div class="progress" style="height:8px">
-										<div class="progress-bar" style="width:${Math.min(100, ((App.state.user?.points ?? 120) % 100))}%"></div>
+										<div class="progress-bar" style="width:${Math.min(100, ((App.state.user?.points ?? 0) % 100))}%"></div>
 									</div>
 									<div class="small text-secondary mt-1">每 100 分升 1 级</div>
 								</div>

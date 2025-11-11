@@ -23,9 +23,9 @@ window.PageChat = {
 								<span class="chip" data-q="城市通勤和周末自驾，预算30万，选什么？">通勤+自驾方案</span>
 							</div>
 							<form id="chatForm" class="d-flex gap-2 mt-auto">
-								<input type="text" class="form-control" id="chatInput" placeholder="输入你的问题（Enter发送）..." required>
-								<button class="btn btn-primary" type="submit" id="btnSend">发送</button>
-								<button class="btn btn-outline-secondary" type="button" id="btnStop" disabled>停止</button>
+								<input type="text" class="form-control" id="chatInput" placeholder="输入你的问题（Enter发送）..." required style="flex:0 0 58%">
+								<button class="btn btn-primary" type="submit" id="btnSend" style="flex:0 0 22%">发送</button>
+								<button class="btn btn-outline-secondary" type="button" id="btnStop" disabled style="flex:0 0 20%">停止</button>
 							</form>
 						</div>
 					</div>
